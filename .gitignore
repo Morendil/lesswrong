@@ -36,3 +36,5 @@ r2/r2.egg-info/**
 r2/lighttpd_access.log
 r2/lighttpd_error.log
 r2/paster.log
+
+.vagrant
