@@ -7,5 +7,6 @@ for db in $dbs; do
     sudo -u postgres createdb -E utf8 $db --lc-ctype 'en_US.utf8' --lc-collate 'en_US.utf8' --template template0
 done
 
-psql -U reddit -W < sql/functions.sql
-psql -U reddit -d reddit_test -W < sql/functions.sql
+export PGPASSWORD=reddit
+psql -U reddit -w < sql/functions.sql
+psql -U reddit -d reddit_test -w < sql/functions.sql
