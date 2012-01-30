@@ -8,5 +8,5 @@ for db in $dbs; do
 done
 
 export PGPASSWORD=reddit
-psql -h localhost -U reddit -d reddit -w < sql/functions.sql
-psql -h localhost -U reddit -d reddit_test -w < sql/functions.sql
+psql -U reddit -d reddit -w < sql/functions.sql
+psql -U reddit -d reddit_test -w < sql/functions.sql
