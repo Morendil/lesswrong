@@ -36,6 +36,7 @@ from r2.lib.strings import strings, Score
 from r2.lib.db.operators import lower
 from r2.lib.db import operators
 from r2.lib.filters import _force_unicode
+from r2.models.subreddit import FakeSubreddit
 
 from pylons import c, g, request
 from pylons.i18n import ungettext
@@ -97,19 +98,23 @@ class Link(Thing, Printable):
                 return links
 
         raise NotFound, 'Link "%s"' % url
-        
+
 
     def can_submit(self, user):
         if c.user_is_admin:
             return True
-        elif self.author_id == c.user._id:
-            # They can submit if they are the author and still have access
-            # to the subreddit of the article
-            sr = Subreddit._byID(self.sr_id, data=True)
-            return sr.can_submit(user)
         else:
-            return False
-            
+            sr = Subreddit._byID(self.sr_id, data=True)
+
+            if sr.is_editor(c.user):
+                return True
+            elif self.author_id == c.user._id:
+                # They can submit if they are the author and still have access
+                # to the subreddit of the article
+                return sr.can_submit(user)
+            else:
+                return False
+
     def is_blessed(self):
         return self.blessed
 
@@ -214,7 +219,30 @@ class Link(Thing, Printable):
         return cls._somethinged(Click, user, link, 'click')
 
     def _click(self, user):
-        return self._something(Click, user, self._clicked, 'click')
+        try:
+            saved = Click(user, self, name='click')
+            saved._commit()
+            return saved
+        except CreationError, e:
+            c = Link._clicked(user,self)
+            obj = c[(user,self,'click')]
+            if not obj:
+                # This is for a possible race.  It is possible the row in the db
+                # has been created but the cache not updated yet. This explicitly
+                # clears the cache then re-gets from the db
+                g.log.info("Trying cache clear for lookup : "+str((user,self,'click')))
+                Click._uncache(user, self, name='click')
+                c = Link._clicked(user,self)
+                obj = c[(user,self,'click')]
+                if not obj:
+                    raise Exception(user,self,e,c)
+            obj._date = datetime.now(g.tz)
+            obj._commit()
+            return c
+
+    def _getLastClickTime(self, user):
+        c = Link._clicked(user,self)
+        return c.get((user, self, 'click'))
 
     @classmethod
     def _hidden(cls, user, link):
@@ -293,12 +321,12 @@ class Link(Thing, Printable):
                                    c.bordercolor]))
         return s
 
-    def make_permalink(self, sr, force_domain = False):
+    def make_permalink(self, sr, force_domain = False, sr_path = False):
         from r2.lib.template_helpers import get_domain
         p = "lw/%s/%s/" % (self._id36, title_to_url(self.title))
-        if c.default_sr:
+        if c.default_sr and not sr_path:
             res = "/%s" % p
-        elif not c.cname:
+        elif sr and not c.cname:
             res = "/r/%s/%s" % (sr.name, p)
         elif sr != c.site or force_domain:
             res = "http://%s/%s" % (get_domain(cname = (c.cname and sr == c.site),
@@ -324,8 +352,8 @@ class Link(Thing, Printable):
 
         saved = Link._saved(user, wrapped) if user else {}
         hidden = Link._hidden(user, wrapped) if user else {}
-        #clicked = Link._clicked(user, wrapped) if user else {}
-        clicked = {}
+        clicked = Link._clicked(user, wrapped) if user else {}
+        #clicked = {}
 
         for item in wrapped:
             show_media = False
@@ -354,7 +382,7 @@ class Link(Thing, Printable):
             item.urlprefix = ''
             item.saved = bool(saved.get((user, item, 'save')))
             item.hidden = bool(hidden.get((user, item, 'hide')))
-            item.clicked = bool(clicked.get((user, item, 'click')))
+            item.clicked = clicked.get((user, item, 'click'))
             item.num = None
             item.score_fmt = Score.signed_number
             item.permalink = item.make_permalink(item.subreddit)
@@ -385,6 +413,11 @@ class Link(Thing, Printable):
             else:
                 item.nofollow = False
 
+            if c.user_is_loggedin and item.subreddit.name == c.user.draft_sr_name:
+              item.draft = True
+            else:
+              item.draft = False
+
         if c.user_is_loggedin:
             incr_counts(wrapped)
 
@@ -401,6 +434,7 @@ class Link(Thing, Printable):
         if self.sr_id != new_sr_id:
             self.sr_id = new_sr_id
             self._date = datetime.now(g.tz)
+            self.url = self.make_permalink_slow()
             self._commit()
 
             # Comments must be in the same subreddit as the link that
@@ -415,7 +449,7 @@ class Link(Thing, Printable):
     def set_blessed(self, is_blessed):
         if self.blessed != is_blessed:
           self.blessed = is_blessed
-          self.date = datetime.now(g.tz)
+          self._date = datetime.now(g.tz)
           self._commit()
 
     def get_images(self):
@@ -674,9 +708,11 @@ class Link(Thing, Printable):
     def _commit(self, *a, **kw):
         """Detect when we need to invalidate the sidebar recent posts.
 
-        Whenever a post is created we need to invalidate.  Also
-        invalidate when various post attributes are changed (such as
-        moving to a different subreddit).
+        Whenever a post is created we need to invalidate.  Also invalidate when
+        various post attributes are changed (such as moving to a different
+        subreddit). If the post cache is invalidated the comment one is too.
+        This is primarily for when a post is banned so that its comments
+        dissapear from the sidebar too.
         """
 
         should_invalidate = (not self._created or
@@ -685,7 +721,8 @@ class Link(Thing, Printable):
         Thing._commit(self, *a, **kw)
 
         if should_invalidate:
-            g.rendercache.delete('side-posts')
+            g.rendercache.delete('side-posts' + '-' + c.site.name)
+            g.rendercache.delete('side-comments' + '-' + c.site.name)
 
 # Note that there are no instances of PromotedLink or LinkCompressed,
 # so overriding their methods here will not change their behaviour
@@ -741,7 +778,6 @@ class InlineArticle(Link):
 class CommentPermalink(Link):
     """Exists to gain a different render_class in Wrapped"""
     _nodb = True
-
 
 class TagExists(Exception): pass
 
@@ -854,13 +890,13 @@ class Tag(Thing):
 class LinkTag(Relation(Link, Tag)):
     pass
 
-
 class Comment(Thing, Printable):
     _data_int_props = Thing._data_int_props + ('reported',)
     _defaults = dict(reported = 0, 
                      moderator_banned = False,
                      banned_before_moderator = False,
-                     is_html = False)
+                     is_html = False,
+                     retracted = False)
 
     def _markdown(self):
         pass
@@ -912,6 +948,18 @@ class Comment(Thing, Printable):
 
         return (comment, inbox_rel)
 
+    def has_children(self):
+        q = Comment._query(Comment.c.parent_id == self._id, limit=1)
+        child = list(q)
+        return len(child)>0
+
+    def can_delete(self):
+        if not self._loaded:
+            self._load()
+        return (c.user_is_loggedin and self.author_id == c.user._id and \
+                self.retracted and not self.has_children())
+        
+
     @property
     def subreddit_slow(self):
         from subreddit import Subreddit
@@ -954,7 +1002,9 @@ class Comment(Thing, Printable):
                               wrapped.can_reply,
                               wrapped.deleted,
                               wrapped.is_html,
-                              wrapped.votable))
+                              wrapped.votable,
+                              wrapped.retracted,
+                              wrapped.can_be_deleted))
         s = ''.join(s)
         return s
 
@@ -976,7 +1026,7 @@ class Comment(Thing, Printable):
 
     def make_permalink_title(self, link):
         author = Account._byID(self.author_id, data=True).name
-        params = {'author' : author, 'title' : _force_unicode(link.title)}
+        params = {'author' : _force_unicode(author), 'title' : _force_unicode(link.title), 'site' : c.site.title}
         return strings.permalink_title % params
           
     @classmethod
@@ -1018,7 +1068,7 @@ class Comment(Thing, Printable):
             item.can_reply = (item.sr_id in can_reply_srs)
 
             # Don't allow users to vote on their own comments
-            item.votable = bool(c.user != item.author)
+            item.votable = bool(c.user != item.author and not item.retracted)
 
             # not deleted on profile pages,
             # deleted if spam and not author or admin
@@ -1040,6 +1090,7 @@ class Comment(Thing, Printable):
             item.num_children = 0
             item.score_fmt = Score.points
             item.permalink = item.make_permalink(item.link, item.subreddit)
+            item.can_be_deleted = item.can_delete()
 
     def _commit(self, *a, **kw):
         """Detect when we need to invalidate the sidebar recent comments.
@@ -1054,7 +1105,7 @@ class Comment(Thing, Printable):
         Thing._commit(self, *a, **kw)
 
         if should_invalidate:
-            g.rendercache.delete('side-comments')
+            g.rendercache.delete('side-comments' + '-' + c.site.name)
 
 class InlineComment(Comment):
     """Exists to gain a different render_class in Wrapped"""

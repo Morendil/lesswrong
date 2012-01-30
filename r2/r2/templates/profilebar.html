@@ -27,10 +27,39 @@
 %if thing.user:
 <div id="side-user" class="sidebox">
   <div id="side-status" class="clear">
+    <h2><a href="/user/${thing.user.name}">${thing.user.name}</a></h2>
+    %if thing.buttons:
+      ${thing.buttons.render()}
+    %endif
+    %if c.user_is_loggedin and not thing.isMe:
+      <ul class="userlinks">
+        <li>
+          ${plain_link(_("Send message"), "/message/compose/?to=%s" % thing.user.name)}
+        </li>
+        <li>
+          <form action="/post/friend" method="post">
+            <input type="hidden" name="type" value="friend"/>
+            <input type="hidden" name="name" value="${thing.user.name}"/>
+            <input type="hidden" name="container" value="${c.user._fullname}" />
+            %if thing.isFriend:
+              <input type="hidden" name="action" value="remove"/>
+              <input type="hidden" name="toggled_action" value="add"/>
+              <input type="hidden" name="toggled_label" value="${_('Add to friends')}"/>
+              <a onclick="return toggle_setting(this, 'friend');" href="#">${_("Remove from friends")}</a>
+            %else:
+              <input type="hidden" name="toggled_action" value="remove"/>
+              <input type="hidden" name="action" value="add"/>
+              <input type="hidden" name="toggled_label"  value="${_('Remove from friends')}"/>
+              <a onclick="return toggle_setting(this, 'friend')" href="#">${_("Add to friends")}</a>
+            %endif
+          </form>
+        </li>
+      </ul>
+    %endif
     <div class="userinfo editor">
-      <h2><a href="/user/${thing.user.name}">${thing.user.name}</a></h2>
       <span class="label">Karma Score</span>
-      <span class="score">${thing.user.safe_karma}</span>
+      <span class="score" title="Total Karma">${thing.user.safe_karma}</span>
+      <span class="monthly-score" title="Karma for the last 30 days">${thing.user.monthly_karma}</span>
       %if thing.user.name in g.admins:
         <span class="role">Editor</span>
       %endif
@@ -50,34 +79,6 @@
       %endif
 
     </div>
-    %if thing.buttons:
-      ${thing.buttons.render()}
-    %endif
-    %if c.user_is_loggedin and not thing.isMe:
-      <ul class="userlinks">
-        <li>
-          ${plain_link(_("Send message"), "/message/compose/?to=%s" % thing.user.name)}
-        </li>
-        <li>
-          <form action="/post/friend" method="post">
-            <input type="hidden" name="type" value="friend"/>
-            <input type="hidden" name="name" value="${thing.user.name}"/>
-            <input type="hidden" name="container" value="${c.user._fullname}" />
-            %if thing.isFriend:
-              <input type="hidden" name="action" value="remove"/>
-              <input type="hidden" name="toggled_action" value="add"/>
-              <input type="hidden" name="toggled_label" value="${_('Add to friends')}"/>
-              <a onclick="return toggle(this, 'friend');" href="#">${_("Remove from friends")}</a>
-            %else:
-              <input type="hidden" name="toggled_action" value="remove"/>
-              <input type="hidden" name="action" value="add"/>
-              <input type="hidden" name="toggled_label"  value="${_('Remove from friends')}"/>
-              <a onclick="return toggle(this, 'friend')" href="#">${_("Add to friends")}</a>
-            %endif
-          </form>
-        </li>
-      </ul>
-    %endif
 
     <dl class="extrainfo">
       %if thing.user.pref_location:

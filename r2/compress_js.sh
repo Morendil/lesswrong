@@ -22,7 +22,7 @@
 # CondeNet, Inc. All Rights Reserved.
 ################################################################################
 
-files=( utils.js animate.js link.js comments.js subreddit.js vote_piece.js reddit_piece.js organic.js )
+files=( event.simulate.js utils.js animate.js link.js comments.js subreddit.js vote_piece.js reddit_piece.js organic.js main.js map.js )
 
 wd=`pwd`
 redditjs='lesswrong.js'
@@ -30,7 +30,7 @@ framejs='frame.js'
 votejs='vote.js'
 
 function compressor {
-  "$wd/r2/lib/contrib/jsjam" -g -i $@
+    yui-compressor --type js $@
 }
 
 echo "Generating ${redditjs}..."
@@ -40,15 +40,11 @@ cd r2/public/static
 
 cat /dev/null > $redditjs.tmp
 for f in "${files[@]}"; do
-    compressor $f >> $redditjs.tmp
+    echo "Compressing ${f}"
+    compressor $f >> $redditjs
 done;
-sed 's/\$/ \$/g' $redditjs.tmp > $redditjs
 
 echo "Droppping md5s..."
-for file in *.js; do
-    cat $file | openssl md5  > $file.md5
-done
-for file in *.css
-do
+for file in *.{js,css,gif,png,jpg}; do
     cat $file | openssl md5  > $file.md5
 done

@@ -53,6 +53,37 @@
   %endif
 </%def>
 
+<%def name="dropdown2()">
+  %if thing:
+    %if not thing.enabled:
+      <div class="filter-inactive">${thing.title}&#32;
+        %if thing.default:
+          <strong>${thing.default[0].upper()+thing.default[1:]}</strong>
+        %elif thing.selected:
+          <strong>${thing.selected.selected_title()}</strong>
+        %elif thing.title:
+          <strong>${thing.title}</strong>
+        %endif
+      </div>
+    %else:
+      %if thing.title and thing.selected:
+        <div class="filter-active">${thing.title}&#32;
+          %if thing.selected:
+            <strong>${thing.selected.selected_title()}</strong>
+          %elif thing.title:
+            <strong>${thing.title}</strong>
+          %endif
+        </div>
+      %endif
+      <div class="filter-options">
+        %for option in thing:
+          ${plain_link(option.title, option.path, _sr_path = option.sr_path)}
+        %endfor
+      </div>
+    %endif
+  %endif
+</%def>
+
 
 <%def name="flatlist()">
   %if thing:
@@ -136,7 +167,6 @@
   %endif
 </%def>
 
-
 <%def name="select()">
   %if thing:
     <% _id = thing._id if thing._id else None %>
@@ -158,6 +188,17 @@
 
 <%def name="navlist()">
   %if thing:
+  <%
+    from r2.models import Subreddit
+    from r2.lib.db.thing import NotFound
+    # Handle missing discussion subreddit; if its not found, we hide the
+    # discussion link
+    try:
+      sr = Subreddit._by_name('discussion')
+    except NotFound:
+      sr = None
+  %>
+
     <ul class="clear"
         ${"id='%s'" % thing._id if thing._id else ""}>
       %for i, option in enumerate(thing):
@@ -170,11 +211,18 @@
              class_name = ""
              content = option.render()
         %>
-        <li ${class_name}>${content}</li>
+        <li ${class_name}>${content}
+          %if hasattr(option, 'sub_menus'):
+            <img class="dropdown" src="/static/nav-dropdown.gif" alt="" />
+            <ul>
+              %for i, sub_menu in enumerate(option.sub_menus()):
+              <% sub_menu.build() %>
+                <li>${sub_menu.render()}</li>
+              %endfor
+            </ul>
+          %endif
+        </li>
       %endfor
-      <li class="right">${plain_link(_('About'), '/about-less-wrong', _sr_path=False)}</li>
-      <li class="right">${plain_link(_('Sequences'), 'http://wiki.lesswrong.com/wiki/Sequences', _sr_path=False)}</li>
-      <li class="right">${plain_link(_('Wiki'), 'http://wiki.lesswrong.com', _sr_path=False)}</li>
     </ul>
   %endif
 </%def>

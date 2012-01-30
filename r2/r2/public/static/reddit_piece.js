@@ -53,7 +53,7 @@ function open_choice(menu) {
 
 var global_cookies_allowed = true;
 
-function init() {
+function init(args) {
     /* temp strip off port for the ajax domain (which will need it to
      * make a request) */
     var i = ajax_domain.indexOf(':');
@@ -84,22 +84,42 @@ function init() {
     /* initiate ajax requests to populate the side bar */
     /*populate_side_bar('side-wikilinks');*/
     /*populate_side_bar('side-wikilinks', 'article_id=2');    */
-    populate_side_bar('side-posts');
-    populate_side_bar('side-comments');
-    populate_side_bar('side-tags');
-    populate_side_bar('side-contributors');
+    populate_side_bar('side-meetups', args);
+    populate_side_bar('side-comments', args);
+    populate_side_bar('side-posts', args);
+    populate_side_bar('side-tags', args);
+    populate_side_bar('side-monthly-contributors', args);
+    populate_side_bar('side-contributors', args);
+
+    populate_side_bar('front-recent-posts', args);
+    populate_side_bar('front-meetups-map', args, 
+                      function(response) { 
+                        $('front-meetups-map').innerHTML = response.responseText;
+                        createMap($('front-map')); 
+                      });
 }
 
-function populate_side_bar(id, args) {
+function populate_side_bar(id, args, onSuccess) {
     var node = $(id);
+    var sr = args.r;
+    var path_prefix = '';
+    if(sr && sr.length > 0) {
+      path_prefix = '/r/' + sr;
+    }
+
+    if (!onSuccess) {
+      onSuccess = function(response) {
+                    node.innerHTML = response.responseText;
+      };
+    }
+
     if (node) {
-        var path = '/api/' + id.replace('-', '_');
+        var path = path_prefix + '/api/' + id.replace('-', '_');
         new Ajax.Request(path, {
                 method: 'get',
                 parameters: args,
-                onSuccess: function(response) {
-                    node.innerHTML = response.responseText;
-                }});
+                onSuccess: onSuccess
+                });
     }
 }
 
@@ -192,7 +212,7 @@ function untoggle(execute, parent, oldtext, type) {
         var uh = modhash; //global
         parent.innerHTML = form.executed.value || oldtext;
 
-        if(type == 'del') {
+        if(type == 'del' || type=='retract') {
             post_form(form, type, function() {return ""});
         }
         else if (typeof(type) == "string") {
@@ -228,7 +248,7 @@ function chklogin(form) {
     return true;
 }
 
-function toggle(a_tag, op) {
+function toggle_setting(a_tag, op) {
     var form = a_tag.parentNode;
     post_form(form, op, function() {return ''});
     var action = form.action.value;

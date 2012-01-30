@@ -19,10 +19,15 @@
 ## All portions of the code written by CondeNet are Copyright (c) 2006-2008
 ## CondeNet, Inc. All Rights Reserved.
 ################################################################################
+<%!
+   from r2.lib.template_helpers import get_domain, static
+%>
 
 <%namespace file="utils.html" import="error_field"/>
 %if not thing.link_name:
 <div id="samplecomment_" style="display:none">
+%else:
+<div class="realcomment">
 %endif
   <form id="commentform_${thing.link_name}" 
         onsubmit="return chkcomment(this);"
@@ -50,18 +55,19 @@
       <button id="comment_edit_${thing.link_name}" style="display:none;" 
               type="submit" class="btn">${_( "edit")}</button>
       %if not thing.link_name:
-      <button id="cancel_" class="btn" 
+      <button id="cancel_" class="btn"
               onclick="cancelReply(this);return false">
-        ${_("Cancel")}</button>
+        ${_("Close")}</button>
       %endif
       <span id='status_${thing.link_name}' class='error'></span>
     </div>
+    <span class="loading"><img src="${static('ajax-loader.gif')}" alt="" /></span>
     <div id="marktoggle_${thing.link_name}" 
          class="help-toggle">
-      <a id="marklink_${thing.link_name}" href='#' 
+      <button id="marklink_${thing.link_name}" class="btn"
          onclick='return helpon(this, "markhelp_", "${_('Hide help')}");'>
-        ${_("Help")}
-      </a>
+        ${_("Show help")}
+      </button>
     </div>
     <div class="clear"></div>
     <script type="text/javascript">
@@ -72,29 +78,10 @@
       }
     </script>
 
-    <div id="markhelp_${thing.link_name}" style="display: none">
-      <table class="help">
-        <tr style="background-color: #ffff99; text-align: center">
-          <td><em>${_( "you type:")}</em></td>
-          <td><em>${_( "you see:")}</em></td></tr>
-        <tr><td>*${_( "italics")}*</td>
-          <td><em>${_( "italics")}</em></td></tr>
-        <tr><td>**${_( "bold")}**</td>
-          <td><b>${_( "bold")}</b></td></tr>
-        <tr><td>[LessWrong](http://www.lesswrong.com)</td>
-          <td><a href="http://lesswrong.com">LessWrong</a></td></tr>
-        <tr><td>* ${_( "item")} 1<br/>
-            * ${_( "item")} 2<br/>
-            *  ${_( "item")} 3</td>
-          <td><ul><li>${_( "item")} 1</li>
-              <li>${_( "item")} 2</li>
-              <li>${_( "item")} 3</li></ul></td></tr>
-        <tr><td>&gt; ${_( "quoted text")}</td>
-          <td><blockquote>${_( "quoted text" )}</blockquote></td></tr>
-      </table>
-    </div>
   </form>
-%if not thing.link_name:
+
+  <div id="markhelp_${thing.link_name}" class="wiki-comment-help commentreply" style="display: none">
+    Loading...
+  </div>
 </div>
-%endif
 

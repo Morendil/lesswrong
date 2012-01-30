@@ -27,8 +27,8 @@
    %>
 <%namespace file="printable.html" import="state_button"/>
 %if not isinstance(c.site, FakeSubreddit):
-  <div class="raisedbox subreddit-info">
-    <h3>${c.site.name}</h3>
+  <div id="subreddit-info" class="sidebox">
+    <h2>${c.site.title}</h2>
 
         %if c.user_is_loggedin:
           <form action="/post/subcribe" method="post" id="subscribe">
@@ -38,7 +38,7 @@
               <input type="hidden" name="action" value="unsub"/>
               <input type="hidden" name="toggled_label"  
                      value="${_('Subscribe')}"/>
-              <a onclick="return toggle(this, 'subscribe');" href="#">
+              <a onclick="return toggle_setting(this, 'subscribe');" href="#">
                 ${_("Unsubscribe")}
               </a>
             %else:
@@ -46,10 +46,11 @@
               <input type="hidden" name="action" value="sub"/>
               <input type="hidden" name="toggled_label"  
                      value="${_('Unsubscribe')}"/>
-              <a onclick="return toggle(this, 'subscribe')" href="#">
+              <a onclick="return toggle_setting(this, 'subscribe')" href="#">
                 ${_("Subscribe")}</a>
             %endif
           </form>
+          &#32;
         %endif
         <span class="label">
           (${strings.person_label % dict(num = c.site._ups,

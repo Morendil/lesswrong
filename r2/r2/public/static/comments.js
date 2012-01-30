@@ -1,6 +1,38 @@
+/* Fill in the given help content, and attach a handler for the form invalidate submission */
+function fillInHelpDiv(elem, content) {
+  elem.innerHTML = content
+  elem.select('.invalidate').first().observe('submit', function(e) {
+    e.stop();
+    elem.innerHTML = "Loading..."
+    new Ajax.Request(this.getAttribute('action'), {
+      method: 'post',
+      parameters: {'skiplayout': 'on'},
+      onSuccess: function(response) {
+        fillInHelpDiv(elem, response.responseText)
+      }
+    })
+  });
+}
+
+/* Perform an ajax get for the help content, and fill in the element */
+function getHelpContent(elem) {
+  new Ajax.Request("/wiki/Commentmarkuphelp", {
+    method: 'get',
+    parameters: {'skiplayout': 'on'},
+    onSuccess: function(response) {
+      fillInHelpDiv(elem, response.responseText)
+    }});
+}
+
 function helpon(link, what, newlabel) {
     var id = _id(link);
-    show(what + id);
+    show(what+id);
+
+    /* If not loaded help content, load it! */
+    if ($(what+id).innerHTML.indexOf('Loading')==0) {
+      getHelpContent($(what+id))
+    }
+
     var oldlabel = link.innerHTML;
     if(newlabel) {
         link.innerHTML = newlabel
@@ -101,7 +133,7 @@ Comment.comment = function(r) {
     vl[id] = r.vl;
 };
 
-// Commenting on a link is handled by the Comment API so defer to it
+/* Commenting on a link is handled by the Comment API so defer to it */
 Link.comment = Comment.comment;
 
 Comment.morechildren = function(r) {
@@ -113,6 +145,8 @@ Comment.morechildren = function(r) {
     var c = new Comment(r.id);
     c.show(true);
     vl[r.id] = r.vl;
+
+    highlightNewComments();
 };
 
 Comment.editcomment = function(r) {
@@ -138,15 +172,48 @@ Comment.prototype.uncollapse = function() {
     hide(this.get('collapsed'));
 };
     
+function all_morechildren(elem) {
+  $$('.morechildren a').each(function(ahref, i) {
+    ahref.simulate('click');
+  });
+  return false;
+};
 
 function morechildren(form, link_id, children, depth) {
     var id = _id(form);
+    //console.log("id="+id+" form="+form+" link_id="+link_id+" children="+children+" depth="+depth);
     form.innerHTML = _global_loading_tag;
     form.style.color="red";
     redditRequest('morechildren', {link_id: link_id,
                 children: children, depth: depth, id: id});
     return false;
+};
+
+function getAttrTime(e) { return parseInt(e.readAttribute('time')); }
+
+function highlightNewComments() {
+  var lastViewed = $('lastViewed')
+  if (!lastViewed) 
+    return;
+
+  var last = getAttrTime(lastViewed);
+  if (last<=0)
+    return;
+  $$('div.comment').each(function(div, i) {
+    var t = getAttrTime(div.select('.comment-date')[0]);
+    if (last<t) {
+      div.addClassName('new-comment')
+    }
+  });
 }
+
+// Display the 'load all comments' if there any to be loaded
+document.observe("dom:loaded", function() {
+  if ($$('.morechildren a').length > 0)
+    $$('#loadAllComments')[0].show();
+
+  highlightNewComments();
+});
 
 
 function editcomment(id)  {
@@ -168,13 +235,34 @@ function reply(id) {
 };
 
 function chkcomment(form) {
+    if(checkInProgress(form)) {
+        var r = confirm("Request still in progress\n(click Cancel to attempt to stop the request)");
+        if (r==false)
+          tagInProgress(form, false);
+        return false;
+    }
+
+    tagInProgress(form, true);
     if(form.replace.value) {
-        return post_form(form, 'editcomment', null, null, true);
+      return post_form(form, 'editcomment', null, null, true, null,
+                       function() { tagInProgress(form, false)});
     }
     else {
-        return post_form(form, 'comment', null, null, true);
+      return post_form(form, 'comment', null, null, true, null,
+                       function() { tagInProgress(form, false)});
     }
 };
+
+function tagInProgress(form, inProgress) {
+  if (inProgress)
+    form.addClassName("inprogress");
+  else
+    form.removeClassName("inprogress");
+}
+
+function checkInProgress(form) {
+  return form.hasClassName("inprogress");
+}
 
 function clearTitle(box) {
     if (box.rows && box.rows < 7 || 

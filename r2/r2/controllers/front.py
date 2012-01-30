@@ -130,6 +130,11 @@ class FrontController(RedditController):
         if not c.default_sr and c.site._id != article.sr_id: 
             return self.abort404()
         
+        # moderator is either reddit's moderator or an admin
+        is_moderator = c.user_is_loggedin and c.site.is_moderator(c.user) or c.user_is_admin
+        if article._spam and not is_moderator:
+            return self.abort404()
+
         if not article.subreddit_slow.can_view(c.user):
             abort(403, 'forbidden')
 
@@ -187,7 +192,7 @@ class FrontController(RedditController):
         loc = None if c.focal_comment or context is not None else 'comments'
 
         if article.comments_enabled:
-            sort_menu = CommentSortMenu(default = sort)
+            sort_menu = CommentSortMenu(default = sort, type='dropdown2')
             if hasattr(article, 'comment_sort_order'):
                 sort_menu.enabled = False
             nav_menus = [sort_menu,
@@ -209,6 +214,10 @@ class FrontController(RedditController):
                            content = content, 
                            infotext = infotext,
                            is_canonical = bool(not request.GET)).render()
+
+        if c.user_is_loggedin:
+            article._click(c.user)
+
         return res
 
     @validate(VUser(),
@@ -264,6 +273,8 @@ class FrontController(RedditController):
             pane = CreateSubreddit(site = c.site, listings = ListingController.listing_names())
         elif location == 'moderators':
             pane = ModList(editable = is_moderator)
+        elif location == 'editors':
+            pane = EditorList(editable = c.user_is_admin)
         elif is_moderator and location == 'banned':
             pane = BannedList(editable = is_moderator)
         elif location == 'contributors' and c.site.type != 'public':
@@ -313,9 +324,9 @@ class FrontController(RedditController):
 
         return EditReddit(content = pane).render()
                               
-    def GET_stats(self):
-        """The stats page."""
-        return BoringPage(_("Stats"), content = UserStats()).render()
+    # def GET_stats(self):
+    #     """The stats page."""
+    #     return BoringPage(_("Stats"), content = UserStats()).render()
 
     # filter for removing punctuation which could be interpreted as lucene syntax
     related_replace_regex = re.compile('[?\\&|!{}+~^()":*-]+')
@@ -441,10 +452,9 @@ class FrontController(RedditController):
         return LoginPage(dest = dest).render()
 
     def GET_logout(self):
-        """wipe login cookie and redirect to referer."""
+        """wipe login cookie and redirect to front page."""
         self.logout()
-        dest = request.referer or '/'
-        return self.redirect(dest)
+        return self.redirect('/')
 
     
     @validate(VUser())
@@ -479,12 +489,17 @@ class FrontController(RedditController):
 
 
     @validate(VUser(),
-              VSRSubmitPage(),
+              can_submit = VSRSubmitPage(),
               url = VRequired('url', None),
               title = VRequired('title', None),
               tags = VTags('tags'))
-    def GET_submit(self, url, title, tags):
+    def GET_submit(self, can_submit, url, title, tags):
         """Submit form."""
+        if not can_submit:
+            return BoringPage(_("Not Enough Karma"),
+                    infotext="You do not have enough karma to post.",
+                    content=NotEnoughKarmaToPost()).render()
+
         if url and not request.get.get('resubmit'):
             # check to see if the url has already been submitted
             listing = link_listing_by_url(url)
@@ -514,8 +529,8 @@ class FrontController(RedditController):
             if redirect_link:
                 return self.redirect(redirect_link.already_submitted_link)
             
-        captcha = Captcha() if c.user.needs_captcha() else None
-        srs = Subreddit.submit_sr(c.user) if c.default_sr else ()
+        captcha = Captcha(tabular=False) if c.user.needs_captcha() else None
+        srs = Subreddit.submit_sr(c.user)
 
         # Set the default sr to the user's draft when creating a new article
         try:
@@ -523,7 +538,7 @@ class FrontController(RedditController):
         except NotFound:
             sr = None
 
-        return FormPage(_("Submit article"), 
+        return FormPage(_("Submit Article"),
                         content=NewLink(title=title or '',
                                         subreddits = srs,
                                         tags=tags,
@@ -535,12 +550,19 @@ class FrontController(RedditController):
               article = VSubmitLink('article'))
     def GET_editarticle(self, article):
         author = Account._byID(article.author_id, data=True)
-        subreddits = Subreddit.submit_sr(author) if c.default_sr else ()
+        subreddits = Subreddit.submit_sr(author)
+        article_sr = Subreddit._byID(article.sr_id)
         if c.user_is_admin:
-          # Add this admin subreddits to the list
-          subreddits = list(set(subreddits).union(Subreddit.submit_sr(c.user)))
-        return FormPage(_("Edit article"), 
-                      content=EditLink(article, subreddits=subreddits, tags=article.tag_names(), captcha=None)).render()
+            # Add this admins subreddits to the list
+            subreddits = list(set(subreddits).union([article_sr] + Subreddit.submit_sr(c.user)))
+        elif article_sr.is_editor(c.user) and c.user != author:
+            # An editor can save to the current subreddit irrspective of the original author's karma
+            subreddits = [sr for sr in Subreddit.submit_sr(c.user) if sr.is_editor(c.user)]
+
+        captcha = Captcha(tabular=False) if c.user.needs_captcha() else None
+
+        return FormPage(_("Edit article"),
+                      content=EditLink(article, subreddits=subreddits, tags=article.tag_names(), captcha=captcha)).render()
 
     def _render_opt_in_out(self, msg_hash, leave):
         """Generates the form for an optin/optout page"""
@@ -617,3 +639,4 @@ class FrontController(RedditController):
 
     def GET_blank(self):
         return ''
+

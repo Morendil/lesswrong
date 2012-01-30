@@ -6,16 +6,16 @@
 # software over a computer network and provide for limited attribution for the
 # Original Developer. In addition, Exhibit A has been modified to be consistent
 # with Exhibit B.
-# 
+#
 # Software distributed under the License is distributed on an "AS IS" basis,
 # WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for
 # the specific language governing rights and limitations under the License.
-# 
+#
 # The Original Code is Reddit.
-# 
+#
 # The Original Developer is the Initial Developer.  The Initial Developer of the
 # Original Code is CondeNet, Inc.
-# 
+#
 # All portions of the code written by CondeNet are Copyright (c) 2006-2008
 # CondeNet, Inc. All Rights Reserved.
 ################################################################################
@@ -23,6 +23,7 @@ from listingcontroller import ListingController
 from listingcontroller import HotController
 from listingcontroller import SavedController
 from listingcontroller import ToplinksController
+from listingcontroller import PromotedController
 from listingcontroller import NewController
 from listingcontroller import BrowseController
 from listingcontroller import RecommendedController
@@ -32,10 +33,12 @@ from listingcontroller import ByIDController as ByidController
 from listingcontroller import RandomrisingController
 from listingcontroller import UserController
 from listingcontroller import CommentsController
-from listingcontroller import RootController
+from listingcontroller import TopcommentsController
 from listingcontroller import BlessedController
 from listingcontroller import TagController
 from listingcontroller import RecentpostsController
+from listingcontroller import EditsController
+from listingcontroller import MeetupslistingController
 
 from listingcontroller import MyredditsController
 
@@ -49,6 +52,8 @@ from post import PostController
 from toolbar import ToolbarController
 from i18n import I18nController
 from promotecontroller import PromoteController
+from meetupscontroller import MeetupsController
+from wikipagecontroller import WikipageController
 
 from querycontroller import QueryController
 

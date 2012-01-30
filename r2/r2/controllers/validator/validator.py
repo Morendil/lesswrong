@@ -23,7 +23,7 @@ from pylons import c, request, g
 from pylons.i18n import _
 from pylons.controllers.util import abort
 from r2.lib import utils, captcha
-from r2.lib.filters import unkeep_space, websafe, _force_unicode
+from r2.lib.filters import unkeep_space, websafe, _force_utf8, _force_ascii
 from r2.lib.db.operators import asc, desc
 from r2.config import cache
 from r2.lib.template_helpers import add_sr
@@ -35,6 +35,7 @@ from r2.controllers.errors import errors, UserRequiredException
 
 from copy import copy
 from datetime import datetime, timedelta
+import pytz
 import re
 
 class Validator(object):
@@ -115,6 +116,11 @@ class VRequired(Validator):
         else:
             return item
 
+class ValueOrBlank(Validator):
+    def run(self, value):
+        """Returns the value as is if present, else an empty string"""
+        return '' if value is None else value
+
 class VLink(Validator):
     def __init__(self, param, redirect = True, *a, **kw):
         Validator.__init__(self, param, *a, **kw)
@@ -131,16 +137,46 @@ class VLink(Validator):
                 else:
                     return None
 
+class VMeetup(Validator):
+    def __init__(self, param, redirect = True, *a, **kw):
+        Validator.__init__(self, param, *a, **kw)
+        self.redirect = redirect
+
+    def run(self, meetup_id36):
+        if meetup_id36:
+            try:
+                meetup_id = int(meetup_id36, 36)
+                return Meetup._byID(meetup_id, True)
+            except (NotFound, ValueError):
+                if self.redirect:
+                    abort(404, 'page not found')
+                else:
+                    return None
+
+class VEditMeetup(VMeetup):
+    def __init__(self, param, redirect = True, *a, **kw):
+        VMeetup.__init__(self, param, redirect = redirect, *a, **kw)
+
+    def run(self, param):
+        meetup = VMeetup.run(self, param)
+        if meetup and not (c.user_is_loggedin and 
+                           meetup.can_edit(c.user, c.user_is_admin)):
+            abort(403, "forbidden")
+        return meetup
+
 class VTagByName(Validator):
     def __init__(self, param, *a, **kw):
         Validator.__init__(self, param, *a, **kw)
         
     def run(self, name):
         if name:
-            try:
-                return Tag._by_name(name)
-            except NotFound:
-                abort(404, 'page not found')
+            cleaned = _force_ascii(name)
+            if cleaned == name:
+                try:
+                    return Tag._by_name(cleaned)
+                except:
+                    pass
+            abort(404, 'page not found')
 
 class VTags(Validator):
     comma_sep = re.compile('[,\s]+', re.UNICODE)
@@ -152,7 +188,7 @@ class VTags(Validator):
         tags = []
         if tag_field:
             # Tags are comma delimited
-            tags = self.comma_sep.split(tag_field)
+            tags = [x for x in self.comma_sep.split(tag_field) if x==_force_ascii(x)]
         return tags
 
 class VMessage(Validator):
@@ -176,9 +212,11 @@ class VCommentID(Validator):
 
 class VCount(Validator):
     def run(self, count):
-        if count is None:
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
             count = 0
-        return max(int(count), 0)
+        return max(count, 0)
 
 
 class VLimit(Validator):
@@ -204,6 +242,23 @@ def chksrname(x):
     except UnicodeEncodeError:
         return None
 
+class VLinkUrls(Validator):
+    "A comma-separated list of link urls"
+    splitter = re.compile('[ ,]+')
+    id_re = re.compile('^/lw/([^/]+)/')
+    def __init__(self, item, *a, **kw):
+        self.item = item
+        Validator.__init__(self, item, *a, **kw)
+    
+    def run(self, val):
+        res=[]
+        for v in self.splitter.split(val):
+            link_id = self.id_re.match(v)
+            if link_id:
+                l = VLink(None,False).run(link_id.group(1))
+                if l:
+                    res.append(l)
+        return res
 
 class VLinkFullnames(Validator):
     "A space- or comma-separated list of fullnames for Links"
@@ -345,7 +400,13 @@ class VUser(Validator):
 class VModhash(Validator):
     default_param = 'uh'
     def run(self, uh):
-        pass
+        if not c.user_is_loggedin:
+            raise UserRequiredException
+
+        if not c.user.valid_hash(uh):
+            g.log.info("Invalid hash on form submission : "+str(c.user))
+            raise UserRequiredException
+            #abort(403, 'forbidden')
 
 class VVotehash(Validator):
     def run(self, vh, thing_name):
@@ -397,9 +458,16 @@ class VSrSpecial(Validator):
 
 class VSRSubmitPage(Validator):
     def run(self):
-        if not (c.default_sr or c.user_is_loggedin and 
-                c.site.can_submit(c.user)):
-            abort(403, "forbidden")
+        if not (c.default_sr or c.user_is_loggedin and c.site.can_submit(c.user)):
+            return False
+        else:
+            return True
+
+class VCreateMeetup(Validator):
+    def run(self):
+        if (c.user_is_loggedin and c.user.safe_karma >= g.discussion_karma_to_post):
+            return True
+        abort(403, "forbidden")
 
 class VSubmitParent(Validator):
     def run(self, fullname):
@@ -464,13 +532,23 @@ def chkuser(x):
     except UnicodeEncodeError:
         return None
 
+def whyuserbad(x):
+    if not x:
+        return errors.BAD_USERNAME_CHARS
+    if len(x)<3:
+        return errors.BAD_USERNAME_SHORT
+    if len(x)>20:
+        return errors.BAD_USERNAME_LONG
+    return errors.BAD_USERNAME_CHARS
+
 class VUname(VRequired):
     def __init__(self, item, *a, **kw):
         VRequired.__init__(self, item, errors.BAD_USERNAME, *a, **kw)
     def run(self, user_name):
+        original_user_name = user_name;
         user_name = chkuser(user_name)
         if not user_name:
-            return self.error()
+            return self.error(whyuserbad(original_user_name))
         else:
             try:
                 a = Account._by_name(user_name, True)
@@ -538,11 +616,12 @@ class VExistingUname(VRequired):
     def __init__(self, item, *a, **kw):
         VRequired.__init__(self, item, errors.NO_USER, *a, **kw)
 
-    def run(self, name):
-        if name:
+    def run(self, username):
+        if username:
             try:
+                name = _force_utf8(username)
                 return Account._by_name(name)
-            except NotFound:
+            except (TypeError, UnicodeEncodeError, NotFound):
                 return self.error(errors.USER_DOESNT_EXIST)
         self.error()
 
@@ -552,7 +631,19 @@ class VUserWithEmail(VExistingUname):
         if not user or not hasattr(user, 'email') or not user.email:
             return self.error(errors.NO_EMAIL_FOR_USER)
         return user
-            
+
+class VTimestamp(Validator):
+    def run(self, val):
+        if not val:
+            c.errors.add(errors.INVALID_DATE)
+            return
+
+        try:
+            val = float(val) / 1000.0
+            datetime.fromtimestamp(val, pytz.utc)   # Check it can be converted to a datetime
+            return val
+        except ValueError:
+            c.errors.add(errors.INVALID_DATE)
 
 class VBoolean(Validator):
     def run(self, val):
@@ -590,6 +681,28 @@ class VInt(Validator):
             return val
         except ValueError:
             c.errors.add(errors.BAD_NUMBER)
+
+class VFloat(Validator):
+    def __init__(self, param, min=None, max=None, error=errors.BAD_NUMBER, *a, **kw):
+        self.min = min
+        self.max = max
+        self.error = error
+        Validator.__init__(self, param, *a, **kw)
+
+    def run(self, val):
+        if not val:
+            c.errors.add(self.error)
+            return
+
+        try:
+            val = float(val)
+            if self.min is not None and val < self.min:
+                val = self.min
+            elif self.max is not None and val > self.max:
+                val = self.max
+            return val
+        except ValueError:
+            c.errors.add(self.error)
 
 class VCssName(Validator):
     """
@@ -658,6 +771,10 @@ class VRatelimit(Validator):
     def ratelimit(self, rate_user = False, rate_ip = False, prefix = "rate_"):
         to_set = {}
         seconds = g.RATELIMIT*60
+
+        if seconds <= 0:
+            return
+
         expire_time = datetime.now(g.tz) + timedelta(seconds = seconds)
         if rate_user and c.user_is_loggedin:
             to_set['user' + str(c.user._id36)] = expire_time
@@ -669,6 +786,8 @@ class VRatelimit(Validator):
 class VCommentIDs(Validator):
     #id_str is a comma separated list of id36's
     def run(self, id_str):
+        if not id_str:
+            return None
         cids = [int(i, 36) for i in id_str.split(',')]
         comments = Comment._byID(cids, data=True, return_dict = False)
         return comments

@@ -76,13 +76,16 @@ class _Unsafe(unicode): pass
 
 def _force_unicode(text):
     try:
-        text = unicode(text, 'utf-8')
+        text = unicode(text, 'utf-8', 'ignore')
     except TypeError:
         text = unicode(text)
     return text
 
 def _force_utf8(text):
     return str(_force_unicode(text).encode('utf8'))
+
+def _force_ascii(text):
+    return _force_unicode(text).encode('ascii', 'ignore')
 
 def unsafe(text=''):
     return _Unsafe(_force_unicode(text))
@@ -187,13 +190,17 @@ def unkeep_space(text):
 
 whitespace_re = re.compile('^\s*$')
 def killhtml(html=''):
-    html_doc = soupparser.fromstring(html)
+    html_doc = soupparser.fromstring(remove_control_chars(html))
     text = filter(lambda text: not whitespace_re.match(text), html_doc.itertext())
     cleaned_html = ' '.join([fragment.strip() for fragment in text])
     return cleaned_html
 
+control_chars = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f]')   # Control characters *except* \t \r \n
+def remove_control_chars(text):
+    return control_chars.sub('',text)
+
 def cleanhtml(html='', cleaner=None):
-    html_doc = soupparser.fromstring(html)
+    html_doc = soupparser.fromstring(remove_control_chars(html))
     if not cleaner:
         cleaner = sanitizer
     cleaned_html = cleaner.clean_html(html_doc)

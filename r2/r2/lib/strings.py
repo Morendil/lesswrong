@@ -106,8 +106,9 @@ string_dict = dict(
     ),
     
     submit_box_text = _('To anything interesting: news article, blog entry, video, picture...'),
-    permalink_title = _("%(author)s comments on %(title)s"),
-    link_info_title = _("%(site)s: %(title)s"),
+    permalink_title = _("%(author)s comments on %(title)s - %(site)s"),
+    link_info_title = _("%(title)s - %(site)s"),
+    show_meetup_title = _("%(title)s - %(site)s"),
     not_enough_downvote_karma = _('You do not have enough karma to downvote right now. You need %d more %s.')
 )
 
@@ -307,5 +308,5 @@ class RandomStringManager(object):
 
 rand_strings = RandomStringManager()
 
-rand_strings.add('sadmessages',   "Funny 500 page message", 10)
+rand_strings.add('sadmessages',   "Funny 500 page message", 1)
 rand_strings.add('create_reddit', "Reason to create a reddit", 20)

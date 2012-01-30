@@ -6,14 +6,14 @@ function unsafe(text) {
 
 function hide () {
     for (var i = 0; i < arguments.length; i++) {
-            var e = $(arguments[i]); 
+            var e = $(arguments[i]);
             if (e) e.style.display = "none";
     }
 }
 
 function show () {
     for (var i = 0; i < arguments.length; i++) {
-        var e = $(arguments[i]); 
+        var e = $(arguments[i]);
         if (e) e.style.display = "";
     }
 }
@@ -86,10 +86,18 @@ function buildParams(parameters) {
     return parameters;
 }
 
-var api_loc = '/api/';
-function redditRequest(op, parameters, worker_in, block) {
+/* redditRequest: worker_in - the callback to process the ajax response.
+                               if null, will use handleResponse
+                  cleanup_func - if this callback is specified, and worker_in
+                                 is not, then cleanup_func will be called on completion of the ajax call
+ */
+function redditRequest(op, parameters, worker_in, block, api_loc, cleanup_func) {
     var action = op;
     var worker = worker_in;
+    if (!api_loc) {
+      api_loc = '/api/';
+    }
+
     if (!parameters) {
         parameters = {};
     }
@@ -101,7 +109,7 @@ function redditRequest(op, parameters, worker_in, block) {
     }
     op = api_loc + op;
     if(!worker) {
-        worker = handleResponse(action);
+        worker = handleResponse(action,cleanup_func);
     }
     else {
         worker = function(r) {
@@ -110,7 +118,7 @@ function redditRequest(op, parameters, worker_in, block) {
         }
     }
     if(block == null || add_ajax_work(action)) {
-        new Ajax.Request(op, {parameters: make_get_params(parameters), 
+        new Ajax.Request(op, {parameters: make_get_params(parameters),
                     onComplete: worker});
     }
 }
@@ -122,7 +130,7 @@ function add_ajax_work(op) {
     }
     _ajax_work_queue[op] = true;
     return true;
-} 
+}
 function remove_ajax_work(op) {
     _ajax_work_queue[op] = false;
 }
@@ -171,7 +179,7 @@ function applyStylesheet(cssText) {
 
     for(var x=0; x < headNodes.length; x++) {
       var node = headNodes[x];
-    
+
       if(node.title == sheet_title) {
         headNode.removeChild(node);
         break;
@@ -183,9 +191,9 @@ function applyStylesheet(cssText) {
     appliedCSSNode.rel = 'stylesheet';
     appliedCSSNode.media = 'screen';
     appliedCSSNode.title = sheet_title;
-    
+
     appliedCSSNode.textContent = cssText;
-    
+
     headNode.appendChild(appliedCSSNode);
   }
 }
@@ -199,7 +207,7 @@ function hideDefaultStylesheet() {
 function toggleDefaultStylesheet(p_show) {
   var stylesheet_contents = $('stylesheet_contents').parentNode.parentNode;
   var default_stylesheet  = $('default_stylesheet').parentNode.parentNode;
-  
+
   var show_button  = $('show_default_stylesheet');
   var hide_button  = $('hide_default_stylesheet');
 
@@ -242,7 +250,7 @@ function gotoTextboxLine(textboxID, lineNo) {
   if (lineNo < lines.length) {
       end_pos += lines[lineNo-1].length + newline_length;
   }
- 
+
 
   textbox.focus();
   if(textbox.createTextRange) {   /* IE */
@@ -274,9 +282,9 @@ function insertAtCursor(textbox, value) {
     }
     else if (textbox.selectionStart) {
         var prev_start = textbox.selectionStart;
-        textbox.value = 
-            textbox.value.substring(0, textbox.selectionStart) + 
-            value + 
+        textbox.value =
+            textbox.value.substring(0, textbox.selectionStart) +
+            value +
             textbox.value.substring(textbox.selectionEnd, textbox.value.length);
         prev_start += value.length;
         textbox.setSelectionRange(prev_start, prev_start);
@@ -312,7 +320,7 @@ function completedUploadImage(status, img_src, name, errors) {
       else {
           hide(e);
       }
-          
+
   }
 
   if(img_src) {
@@ -326,7 +334,7 @@ function completedUploadImage(status, img_src, name, errors) {
           show('img-preview-container');
       } else {
           var img = $("img-preview_" + name);
-          if(img) { 
+          if(img) {
               /* Because IE isn't smart enought to eval "!img" */
           }
           else {
@@ -351,7 +359,7 @@ function completedUploadImage(status, img_src, name, errors) {
                   opt.innerHTML = name;
                   sel_list.appendChild(opt);
               }
-          } 
+          }
           img.src = img_src;
           $("img-preview-a_" + name).href = img_src;
           show("img-li_" + name);
@@ -359,7 +367,7 @@ function completedUploadImage(status, img_src, name, errors) {
   }
 }
 
-function handleResponse(action) {
+function handleResponse(action, cleanup_func) {
     var my_iter = function(x, func) {
         if(x) {
             var y = tup(x);
@@ -372,7 +380,7 @@ function handleResponse(action) {
         remove_ajax_work(action);
         var res_obj = parse_response(r);
         if(!res_obj) {
-            if($('status')) 
+            if($('status'))
                 $('status').innerHTML = '';
             return;
         }
@@ -391,19 +399,24 @@ function handleResponse(action) {
             var errid = error.name;
             if (error.id) { errid += "_" + error.id; }
             errid = $(errid);
-            if (errid) { 
+            if (errid) {
                 show(errid);
-                $(errid).innerHTML = error.message; 
+                $(errid).innerHTML = error.message;
             }
         }
-        var r = res_obj.response;
+
+        if (cleanup_func) {
+          cleanup_func(res_obj);
+        }
+  
+      var r = res_obj.response;
         if(!r) return;
         var obj = r.object;
         if(obj) {
             my_iter(tup(obj),
                     function(u) {
                         if(u && u.kind && class_dict[u.kind]) {
-                            var func = (class_dict[u.kind][u.action] || 
+                            var func = (class_dict[u.kind][u.action] ||
                                         class_dict[u.kind][action]);
                             if(func) {
                                 func(u.data);
@@ -442,7 +455,7 @@ function handleResponse(action) {
         if (r.success) {
             fire_success();
         }
-        my_iter(r.update, 
+        my_iter(r.update,
                 function(u) {
                     var field = u.id && $(u.id);
                     if(field) {
@@ -459,6 +472,7 @@ function handleResponse(action) {
                 function(h) {
                     var field = h.name && $(h.name);
                     if(field) { show(field); }});
+
     };
     return responseHandler;
 }
@@ -486,7 +500,7 @@ function Thing(id) {
 };
 
 function field(form_field) {
-    if (form_field == null || form_field.value == null || 
+    if (form_field == null || form_field.value == null ||
         ((form_field.type == 'text'  || form_field.type == 'textarea')
          && form_field.style.color == "gray") ||
         (form_field.type == 'radio' && ! form_field.checked)) {
@@ -518,11 +532,24 @@ function change_state(link, type) {
     return false;
 }
 
-function post_form(form, where, statusfunc, nametransformfunc, block) {
+function change_state_by_class(link, type, className) {
+    var parent = link.parentNode;
+    var form = parent.parentNode;
+    var id = form.id.value;
+    if (link.hasClassName(className)) {
+        link.removeClassName(className);
+    } else {
+        link.addClassName(className);
+    }
+    redditRequest(type, {id: id, uh: modhash});
+    return false;
+}
+
+function post_form(form, where, statusfunc, nametransformfunc, block, api_loc, cleanup_func) {
     var p = {uh: modhash};
     var id = _id(form);
     var status = $("status");
-    
+
     if(statusfunc == null) {
         statusfunc = function(x) { return _global_submitting_tag; };
     }
@@ -535,7 +562,7 @@ function post_form(form, where, statusfunc, nametransformfunc, block) {
     }
     if(status) { status.innerHTML = statusfunc(form); }
     for(var i = 0; i < form.elements.length; i++) {
-        if(! form.elements[i].id || !id || 
+        if(! form.elements[i].id || !id ||
            _id(form.elements[i]) == id) {
             var f = field(form.elements[i]);
             if (f) {
@@ -543,7 +570,7 @@ function post_form(form, where, statusfunc, nametransformfunc, block) {
             }
         }
     }
-    redditRequest(where, p, null, block); 
+    redditRequest(where, p, null, block, api_loc, cleanup_func);
     return false;
 }
 
@@ -559,7 +586,7 @@ function setMessage(field, msg) {
         field.onfocus = null;
     }
 }
-                            
+
 
 function more(a_tag, new_label, div_on, div_off) {
     var old_label = a_tag.innerHTML;
@@ -575,12 +602,12 @@ function more(a_tag, new_label, div_on, div_off) {
 
 
 function new_captcha() {
-    redditRequest("new_captcha"); 
+    redditRequest("new_captcha");
 }
 
 function view_embeded_media(id, media_link) {
     var eid = "embeded_media_" + id;
-    var watchid = "view_embeded_media_span_watch_" + id;    
+    var watchid = "view_embeded_media_span_watch_" + id;
     var closeid = "view_embeded_media_span_close_" + id;
     var watchspan = document.getElementById(watchid);
     var closespan = document.getElementById(closeid);
@@ -608,7 +635,7 @@ function show_hide_child(el, tagName, label) {
             el.innerHTML = 'view ' + label;
         }
 }
-    
+
 function continueEditing(continue_editing) {
     var form = document.getElementById('newlink');
     if(form && continue_editing) {

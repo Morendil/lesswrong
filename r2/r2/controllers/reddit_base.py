@@ -24,7 +24,7 @@ from pylons import c, g, request
 from pylons.controllers.util import abort, redirect_to
 from pylons.i18n import _
 from pylons.i18n.translation import LanguageError
-from r2.lib.base import BaseController, proxyurl
+from r2.lib.base import BaseController, proxyurl, current_login_cookie
 from r2.lib import pages, utils, filters
 from r2.lib.utils import http_utils
 from r2.lib.cache import LocalCache
@@ -248,6 +248,12 @@ def set_subreddit():
 
     if isinstance(c.site, FakeSubreddit):
         c.default_sr = True
+        try:
+            c.current_or_default_sr = Subreddit._by_name(g.default_sr)
+        except NotFound:
+            c.current_or_default_sr = None
+    else:
+        c.current_or_default_sr = c.site
 
     # check that the site is available:
     if c.site._spam and not c.user_is_admin and not c.error_page:
@@ -379,9 +385,13 @@ def base_listing(fn):
               after  = VByName('after'),
               before = VByName('before'),
               count  = VCount('count'))
-    def new_fn(self, before, **env):
+    def new_fn(self, before, num, **env):
         kw = self.build_arg_list(fn, env)
-        
+
+        # Multiply the number per page by the per page multiplier for the reddit
+        if num:
+            kw['num'] = c.site.posts_per_page_multiplier * num
+
         #turn before into after/reverse
         kw['reverse'] = False
         if before:
@@ -466,10 +476,7 @@ class RedditController(BaseController):
         c.response_wrappers = []
         c.errors = ErrorSet()
         c.firsttime = firsttime()
-        (c.user, maybe_admin) = \
-            valid_cookie(c.cookies[g.login_cookie].value
-                         if g.login_cookie in c.cookies
-                         else '')
+        (c.user, maybe_admin) = valid_cookie(current_login_cookie())
 
         if c.user:
             c.user_is_loggedin = True

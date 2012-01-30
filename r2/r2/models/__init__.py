@@ -28,5 +28,7 @@ from report import *
 from subreddit import *
 from mail_queue import Email, has_opted_out, opt_count
 from admintools import *
+from edit import *
+from meetup import *
 import thing_changes
 

@@ -6,6 +6,9 @@ require 'capistrano/ext/multistage'
 load 'config/cap-tasks/common.rb'
 load 'config/cap-tasks/test.rb'
 load 'config/cap-tasks/console.rb'
+load 'config/cap-tasks/console.rb'
+load 'config/cap-tasks/rake.rb'
+load 'config/cap-tasks/postgresql_dump.rb'
 load 'config/db.rb'
 
 set :scm, 'git'
@@ -20,10 +23,19 @@ set :branch, 'stable'
 set :rails_env, nil
 set :user, "www-data"            # defaults to the currently logged in user
 set :public_path, lambda { "#{current_path}/r2/r2/public" }
+set :databases, %w[main change email query_queue]
 
 namespace :deploy do
   after "deploy:update_code", :roles => [:web, :app] do
     %w[files assets].each {|dir| link_shared_dir(dir) }
+  end
+
+  def rake_options
+    {
+      'APPLICATION' => application,
+      'APPLICATION_USER' => user,
+      'APPLICATION_ENV' => environment
+    }.map { |k, v| "#{k}=#{v}" }.join(" ")
   end
 
   def link_shared_dir(dir)
@@ -34,35 +46,23 @@ namespace :deploy do
     run "ln -sv #{shared_subdir} #{public_dir}"
   end
 
-  desc 'Link to a reddit ini file stored on the server (/usr/local/etc/reddit/#{application}.ini'
+  desc 'Symlink all the INI files into the release dir'
   task :symlink_remote_reddit_ini, :roles => :app do
-    run "ln -sf /usr/local/etc/reddit/#{application}.ini #{release_path}/r2/#{application}.ini"
-    if application == "lesswrong.com"
-      # for backwards compatibility
-      run "ln -sf /usr/local/etc/reddit/#{application}.ini #{release_path}/r2/lesswrong.org.ini"
-    end
-  end
-
-  desc 'Run Reddit setup routine'
-  task :setup_reddit, :roles => :app do
-    sudo "/bin/bash -c \"cd #{release_path}/r2 && python ./setup.py install\""
-    sudo "/bin/bash -c \"cd #{release_path} && chown -R #{user} .\""
-  end
-
-  desc 'Compress and concetenate JS and generate MD5 files'
-  task :process_static_files, :roles => :app do
-    run "cd #{release_path}/r2 && ./compress_js.sh"
+    # Not using remote rake because need to cd to release path not current
+    run "cd #{release_path} && rake --trace deploy:symlink_ini #{rake_options}"
   end
 
   desc "Restart the Application"
   task :restart, :roles => :app do
-    pid_file = "#{shared_path}/pids/paster.pid"
-    run "cd #{current_path}/r2 && paster serve --stop-daemon --pid-file #{pid_file} #{application}.ini || true"
-    run "cd #{current_path}/r2 && paster serve --daemon --pid-file #{pid_file} #{application}.ini"
+    remote_rake "--trace deploy:restart #{rake_options}"
+  end
+
+  desc "Run after update code rake task"
+  task :rake_after_update_code, :roles => :app do
+    remote_rake "--trace after_update_code #{rake_options}", :path => release_path
   end
 end
 
 before 'deploy:update_code', 'git:ensure_pushed'
-after "deploy:update_code", "deploy:setup_reddit"
-after "deploy:update_code", "deploy:process_static_files"
-after "deploy:update_code", "deploy:symlink_remote_reddit_ini"
+after "deploy:update_code", "deploy:rake_after_update_code"
+

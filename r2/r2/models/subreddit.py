@@ -6,16 +6,16 @@
 # software over a computer network and provide for limited attribution for the
 # Original Developer. In addition, Exhibit A has been modified to be consistent
 # with Exhibit B.
-# 
+#
 # Software distributed under the License is distributed on an "AS IS" basis,
 # WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for
 # the specific language governing rights and limitations under the License.
-# 
+#
 # The Original Code is Reddit.
-# 
+#
 # The Original Developer is the Initial Developer.  The Initial Developer of the
 # Original Code is CondeNet, Inc.
-# 
+#
 # All portions of the code written by CondeNet are Copyright (c) 2006-2008
 # CondeNet, Inc. All Rights Reserved.
 ################################################################################
@@ -52,7 +52,9 @@ class Subreddit(Thing, Printable):
                      valid_votes = 0,
                      show_media = False,
                      domain = None,
-                     default_listing = 'hot'
+                     default_listing = 'hot',
+                     post_karma_multiplier = g.post_karma_multiplier,
+                     posts_per_page_multiplier = 1
                      )
     sr_limit = 50
 
@@ -142,6 +144,10 @@ class Subreddit(Thing, Printable):
         return self.moderator_ids()
 
     @property
+    def editors(self):
+        return self.editor_ids()
+
+    @property
     def contributors(self):
         return self.contributor_ids()
 
@@ -171,9 +177,14 @@ class Subreddit(Thing, Printable):
             return True
         elif self.is_banned(user):
             return False
+        elif self.is_moderator(user) or self.is_editor(user):
+            # moderators and editors can always submit
+            return True
+        elif self == Subreddit._by_name('discussion') and user.safe_karma < g.discussion_karma_to_post:
+            return False
         elif self.type == 'public':
             return True
-        elif self.is_moderator(user) or self.is_contributor(user):
+        elif self.is_contributor(user):
             #restricted/private require contributorship
             return True
         elif self == Subreddit._by_name(g.default_sr) and user.safe_karma >= g.karma_to_post:
@@ -210,8 +221,8 @@ class Subreddit(Thing, Printable):
             rl_karma = g.MIN_RATE_LIMIT_COMMENT_KARMA
         else:
             rl_karma = g.MIN_RATE_LIMIT_KARMA
-            
-        return not (self.is_special(user) or 
+
+        return not (self.is_special(user) or
                     user.karma(kind, self) >= rl_karma)
 
     def can_view(self, user):
@@ -253,7 +264,7 @@ class Subreddit(Thing, Printable):
     def get_links(self, sort, time, link_cls = None):
         from r2.lib.db import queries
         from r2.models import Link
-        
+
         if not link_cls:
             link_cls = Link
         return queries.get_links(self, sort, time, link_cls)
@@ -317,11 +328,13 @@ class Subreddit(Thing, Printable):
         if not c.over18:
             pop_reddits._filter(Subreddit.c.over_18 == False)
 
+        pop_reddits._filter(Subreddit.c.name != 'discussion')
+
         pop_reddits = list(pop_reddits)
 
         if not pop_reddits and lang != 'en':
             pop_reddits = cls.default_srs('en')
-            
+
         return [s._id for s in pop_reddits] if ids else list(pop_reddits)
 
     @classmethod
@@ -360,6 +373,15 @@ class Subreddit(Thing, Printable):
         srs = Subreddit._byID(sub_ids, True,
                               return_dict = False)
         srs = [s for s in srs if s.can_submit(user) or s.name == g.default_sr]
+
+        # Add the discussion subreddit manually. Need to do this because users
+        # are not subscribed to it.
+        try:
+            discussion_sr = Subreddit._by_name('discussion')
+            if discussion_sr._id not in sub_ids and discussion_sr.can_submit(user):
+                srs.insert(0, discussion_sr)
+        except NotFound:
+          pass
 
         srs.sort(key=lambda a:a.title)
         return srs
@@ -404,7 +426,7 @@ class Subreddit(Thing, Printable):
             # copy and blank out the images list to flag as _dirty
             l = self.images
             self.images = None
-            # initialize the /empties/ list 
+            # initialize the /empties/ list
             l.setdefault('/empties/', [])
             try:
                 num = l['/empties/'].pop() # grab old number if we can
@@ -485,7 +507,7 @@ class FriendsSR(FakeSubreddit):
         if time != 'all':
             q._filter(queries.db_times[time])
         return q
-            
+
 class AllSR(FakeSubreddit):
     name = 'all'
     title = 'All'
@@ -493,7 +515,7 @@ class AllSR(FakeSubreddit):
     def get_links(self, sort, time, link_cls = None):
         from r2.models import Link
         from r2.lib.db import queries
-        
+
         if not link_cls:
             link_cls = Link
         q = link_cls._query(sort = queries.db_sort(sort))
@@ -506,7 +528,7 @@ class DefaultSR(FakeSubreddit):
     #notice the space before reddit.com
     name = g.default_sr
     path = '/'
-    header = 'http://static.reddit.com/reddit.com.header.png'
+    header = '/static/logo_trans.png'
 
     def get_links_sr_ids(self, sr_ids, sort, time, link_cls = None):
         from r2.lib.db import queries
@@ -590,13 +612,13 @@ class DomainSR(FakeSubreddit):
     def __init__(self, domain):
         FakeSubreddit.__init__(self)
         self.domain = domain
-        self.name = domain 
+        self.name = domain
         self.title = domain + ' ' + _('on lesswrong.com')
 
     def get_links(self, sort, time, link_cls = None):
         from r2.lib.db import queries
         return queries.get_domain_links(self.domain, sort, time)
-        
+
 Sub = SubSR()
 Friends = FriendsSR()
 All = AllSR()
@@ -604,6 +626,7 @@ Default = DefaultSR()
 
 class SRMember(Relation(Subreddit, Account)): pass
 Subreddit.__bases__ += (UserRel('moderator', SRMember),
+                        UserRel('editor', SRMember),
                         UserRel('contributor', SRMember),
                         UserRel('subscriber', SRMember),
                         UserRel('banned', SRMember))

@@ -24,7 +24,7 @@
    from r2.models.subreddit import Default
    from r2.lib.template_helpers import get_domain, static
    from r2.lib.filters import safemarkdown, cleanhtml
-   from r2.lib.utils import prettytime
+   from r2.lib.utils import prettytime, epochtime
    from r2.lib.strings import strings
  %>
 
@@ -43,12 +43,13 @@
   else:
     full_article = False
     heading_size = 2
+    css_class += ' list'
 
   fullname = thing._fullname
 %>
 
-<div id="thingrow_${fullname}" class="${css_class}">
-  <h${heading_size}><a href="${thing.url}">${self.title()}</a></h${heading_size}>
+<div id="thingrow_${fullname}" class="${css_class}" itemscope itemtype="http://schema.org/BlogPosting">
+  <h${heading_size} itemprop="name"><a href="${thing.url}">${self.title()}</a>${unsafe(self.draft())}</h${heading_size}>
   <div class="meta clear">
 
     %if thing.hide_score:
@@ -71,15 +72,29 @@
   <div id="entry_${fullname}" class="content clear">
 ## The div below is a hack to get the space compressor to leave whitespace in articles alone
     <div class="md">
-      %if full_article:
-        ${self.article()}
-      %else:
-        ${self.summary()}
-      %endif
+      <div itemprop="description">
+        %if full_article:
+          ${self.article()}
+        %else:
+          ${self.summary()}
+        %endif
+      </div>
     </div>
   </div><!-- .content -->
+  %if full_article:
+  <div class="articlenavigation">
+    <h4><a href="javascript:void(0)" class="dsphead" onclick="toggle_article_navigation('${thing._id36}')" id="articlenavstate">Article Navigation</a></h4>
+    <div style="display: none;" class="dspcont" id="article_nav_controls">
+      <span class="loading"><img src="${static('ajax-loader.gif')}" alt="" />
+      Loading&hellip;</span>
+    </div>
+  </div><!-- .articlenavigation -->
+  %endif
   <div class="tools clear">
     ${parent.midcol(thing.votable)}
+    %if c.user_is_loggedin and (not c.profilepage):
+      <div style="display: none;" id='lastViewed' time="${ epochtime(thing.clicked._date if thing.clicked else None) }"></div>
+    %endif
     %if thing.comments_enabled:
       <%
           num_comments = 0 if not thing.num_comments else thing.num_comments
@@ -88,7 +103,7 @@
     %endif
     <div class="boxright clear">
       <ul class="clear">
-        ${self.buttons(comments = False)}
+        ${self.buttons(comments = False, report=False)}
       </ul>
       %if full_article:
         <% tags = thing.get_tags() %>
@@ -100,20 +115,10 @@
             %endfor
           </div>
         %endif
-        <img src="${static('mini-landscape.gif')}" alt="" class="landscape" />
       %endif
     </div>
     ## Each link has a hidden status span that is used to indicate voting errors.
-    <span id=${"status_"+thing._fullname} class="error" style="display: none;"></span>
-    %if full_article:
-    <div class="articlenavigation">
-      <h4><a href="javascript:void(0)" class="dsphead" onclick="toggle_article_navigation('${thing._id36}')" id="articlenavstate">Article Navigation</a></h4>
-      <div style="display: none;" class="dspcont" id="article_nav_controls">
-        <span class="loading"><img src="${static('ajax-loader.gif')}" alt="" />
-        Loading&hellip;</span>
-      </div>
-    </div><!-- .articlenavigation -->
-    %endif
+    <span id='${"status_"+thing._fullname}' class="error" style="display: none;"></span>
   </div><!-- .tools -->
 </div><!-- .post -->
 
@@ -123,14 +128,14 @@
   ${thing.title}
 </%def>
 
+<%def name="draft()">
+    %if thing.draft:
+      &#32;<span class="draft">Draft</span>
+    %endif
+</%def>
+
 <%def name="article()">
   ${unsafe(cleanhtml(thing.article))}
-  <div class="social-sharing-button">
-  <!-- AddThis Button BEGIN -->
-  <script type="text/javascript">var addthis_pub="lesswrong";</script>
-  <a href="http://www.addthis.com/bookmark.php?v=20" onmouseover="return addthis_open(this, '', '[URL]', '[TITLE]')" onmouseout="addthis_close()" onclick="return addthis_sendto()"><img src="http://s7.addthis.com/static/btn/lg-bookmark-en.gif" width="125" height="16" alt="Bookmark and Share" style="border:0"/></a><script type="text/javascript" src="http://s7.addthis.com/js/200/addthis_widget.js"></script>
-  <!-- AddThis Button END -->
-  </div>
 </%def>
 
 <%def name="summary()">
@@ -204,12 +209,6 @@
         </ul>
       </div>
     %endif
-    <div class="social-sharing-button">
-    <!-- AddThis Button BEGIN -->
-    <script type="text/javascript">var addthis_pub="lesswrong";</script>
-    <a href="http://www.addthis.com/bookmark.php?v=20" onmouseover="return addthis_open(this, '', '[URL]', '[TITLE]')" onmouseout="addthis_close()" onclick="return addthis_sendto()"><img src="http://s7.addthis.com/static/btn/lg-bookmark-en.gif" width="125" height="16" alt="Bookmark and Share" style="border:0"/></a><script type="text/javascript" src="http://s7.addthis.com/js/200/addthis_widget.js"></script>
-    <!-- AddThis Button END -->
-    </div>
   %else:
     % if hasattr(thing, '_summary'):
       <div class="md">
@@ -291,7 +290,8 @@
   %if c.user_is_loggedin:
     %if thing.can_submit(c.user):
       <li>
-        ${plain_link("Edit", "/edit/%s" % thing._id36)}
+        <% kw = {"class": "edit", "title": "Edit"} %>
+        ${plain_link("Edit", "/edit/%s" % thing._id36, **kw)}
       </li>
     %endif
     %if c.user_is_admin:
@@ -306,22 +306,19 @@
       </li>
     %endif
     <li>
-    %if thing.saved:
-       ${parent.state_button("unsave", fullname, _("Unsave"), \
-          "return change_state(this, 'unsave');", _("Unsaved"))}
-    %else:
-       ${parent.state_button("save", fullname, _("Save"), \
-          "return change_state(this, 'save');", _("Saved"))}
-    %endif
+    ${parent.state_button("save", fullname, _("Save"), \
+          "return change_state_by_class(this, '%s', 'mod')"%("unsave" if thing.saved else "save"), \
+          _("Saved"), a_class="save"+(" mod" if thing.saved else ""), \
+          tool_tip = "Unsave" if thing.saved else "Save")}
     </li>
     %if not thing.render_full:
       <li>
       %if thing.hidden:
         ${parent.state_button("unhide", fullname, _("Unhide"), \
-          "return change_w_callback(this, $ListClass.unhide);", _("Unhidden"))}
+          "return change_w_callback(this, $ListClass.unhide);", _("Unhidden"), a_class="hide mod", tool_tip="Unhide")}
       %else:
         ${parent.state_button("hide", fullname, _("Hide"), \
-          "return change_w_callback(this, $ListClass.hide);", _("Hidden"))}
+          "return change_w_callback(this, $ListClass.hide);", _("Hidden"), a_class="hide", tool_tip="Hide")}
       %endif
       </li>
     %endif

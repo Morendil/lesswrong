@@ -25,7 +25,7 @@ from pylons.controllers import WSGIController, Controller
 from pylons.i18n import N_, _, ungettext, get_lang
 import r2.lib.helpers as h
 from r2.lib.utils import to_js
-from r2.lib.filters import spaceCompress, _force_unicode
+from r2.lib.filters import spaceCompress, _force_unicode, _force_utf8
 from utils import storify, string2js, read_http_date
 
 import re, md5
@@ -67,7 +67,7 @@ class BaseController(WSGIController):
         request.get = storify(request.GET)
         request.post = storify(request.POST)
         request.referer = environ.get('HTTP_REFERER')
-        request.path = environ.get('PATH_INFO')
+        request.path = _force_utf8(environ.get('PATH_INFO'))      # Enforce only valid utf8 chars in request path
         request.user_agent = environ.get('HTTP_USER_AGENT')
         request.fullpath = environ.get('FULLPATH', request.path)
         request.port = environ.get('request_port')
@@ -188,7 +188,10 @@ def proxyurl(url):
     r = urllib2.Request(url, data, headers)
     content = embedopen.open(r).read()
     return content
-    
+
+def current_login_cookie():
+    return c.cookies[g.login_cookie].value if (g.login_cookie in c.cookies) else ''
+
 __all__ = [__name for __name in locals().keys() if not __name.startswith('_') \
            or __name == '_']
 

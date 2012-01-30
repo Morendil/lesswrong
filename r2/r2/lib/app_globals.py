@@ -45,12 +45,15 @@ class Globals(object):
                  'num_query_queue_workers',
                  'max_sr_images',
                  'karma_to_post',
+                 'discussion_karma_to_post',
+                 'side_meetups_max_age',
                  'side_comments_max_age',
                  'side_posts_max_age',
                  'side_tags_max_age',
                  'side_contributors_max_age',
                  'post_karma_multiplier',
                  'article_navigation_max_age',
+                 'meetups_radius',
                  ]
     
     bool_props = ['debug', 'translator', 
@@ -60,7 +63,10 @@ class Globals(object):
                   'enable_doquery',
                   'use_query_cache',
                   'write_query_queue',
-                  'css_killswitch']
+                  'css_killswitch',
+                  'disable_captcha',
+                  'disable_tracking_js'
+                  ]
 
     tuple_props = ['memcaches',
                    'rec_cache',

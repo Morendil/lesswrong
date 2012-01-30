@@ -24,19 +24,21 @@
    from r2.lib.template_helpers import get_domain, static, UrlParser
    from r2.lib.strings import strings
    from r2.lib import tracking
+   from pylons import g
    import random, datetime
 %>
 <%namespace file="login.html" import="login_panel"/>
 <%namespace file="utils.html" import="text_with_links, plain_link"/>
 
 <div class="footer clear">
-  <a id="reddit-logo" href="http://code.reddit.com" title="Powered by Reddit"><img alt="Powered by Reddit" src="${static('reddit_logo.png')}" width="75" height="25" /></a>
-  <div class="link">
-    ${plain_link(_('About Less Wrong'), '/about-less-wrong', _sr_path=False)}
+  <div class="reddit">
+    Powered by&nbsp;<strong>Reddit</strong>
+    <a href="http://code.reddit.com" title="Powered by Reddit"><img alt="Powered by Reddit" src="${static('reddit_logo.png')}" /></a>
   </div>
-  <div class="link">
-    <a href="http://wiki.github.com/tricycle/lesswrong/issues-bugs-and-requested-features">Report Issues</a>
-  </div>
+  <ul class="footer-links">
+    <li>${plain_link(_('About Less Wrong'), '/about', _sr_path=False)}</li>
+    <li><a href="http://wiki.github.com/tricycle/lesswrong/issues-bugs-and-requested-features">Report Issues</a></li>
+  </ul>
  %if g.tracker_url:
   <img alt="" src="${tracking.UserInfo.gen_url()}"/>
  %endif
@@ -91,12 +93,24 @@
   </div>
 %endif
 
-<script type="text/javascript">
-var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
-document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
-</script>
-<script type="text/javascript">
-try {
-var pageTracker = _gat._getTracker("UA-5818093-2");
-pageTracker._trackPageview();
-} catch(err) {}</script>
+%if not getattr(g, 'disable_tracking_js', False):
+        <script type="text/javascript">
+          var vglnk = { api_url: '//api.viglink.com/api',
+                        key: '9f37ca02a1e3cbd4f3d0a3618a39fbca' };
+
+          (function(d, t) {
+            var s = d.createElement(t); s.type = 'text/javascript'; s.async = true;
+            s.src = vglnk.api_url + '/vglnk.js?key=' + vglnk.key;
+            var r = d.getElementsByTagName(t)[0]; r.parentNode.insertBefore(s, r);
+          }(document, 'script'));
+        </script>
+        <script type="text/javascript">
+        var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+        document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+        </script>
+        <script type="text/javascript">
+        try {
+        var pageTracker = _gat._getTracker("UA-5818093-2");
+        pageTracker._trackPageview();
+        } catch(err) {}</script>
+%endif

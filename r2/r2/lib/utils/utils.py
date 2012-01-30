@@ -27,11 +27,12 @@ from copy import deepcopy
 import cPickle as pickle
 import re, datetime, math, random, string, os, yaml
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from pylons.i18n import ungettext, _
 from r2.lib.filters import _force_unicode
 from mako.filters import url_escape, url_unescape
-        
+from pylons import g        
+
 iters = (list, tuple, set)
 
 def tup(item, ret_is_single=False):
@@ -416,11 +417,26 @@ def timeuntil(d, resultion = 1, bare = True):
     from pylons import g
     return timetext(d - datetime.now(g.tz))
 
+def epochtime(date):
+    if not date:
+        return "0"
+    date = date.astimezone(g.tz)
+    return date.strftime("%s")
+
 def prettytime(date, seconds = False):
+    date = date.astimezone(g.tz)
     return date.strftime('%d %B %Y %I:%M:%S%p' if seconds else '%d %B %Y %I:%M%p')
 
 def rfc822format(date):
     return date.strftime('%a, %d %b %Y %H:%M:%S %z')
+
+def usformat(date):
+  """
+  Format a datetime in US date format
+
+  Makes the date readable by the Protoplasm datetime picker
+  """
+  return date.strftime('%m-%d-%Y %H:%M:%S')
 
 def to_base(q, alphabet):
     if q < 0: raise ValueError, "must supply a positive integer"
@@ -965,11 +981,11 @@ def UniqueIterator(iterator):
 
     return IteratorFilter(iterator, no_dups)
 
-def modhash(user, rand = None, test = False):
-    return user.name
+# def modhash(user, rand = None, test = False):
+#     return user.name
 
-def valid_hash(user, hash):
-    return True
+# def valid_hash(user, hash):
+#     return True
 
 def check_cheating(loc):
     pass
@@ -1011,4 +1027,38 @@ def trace(fn):
                     % (fn,a,kw,ret))
         return ret
     return new_fn
+
+def remote_addr(env):
+  """
+  Returns the remote address for the WSGI env passed
+
+  Takes proxies into consideration
+  """
+  # In production the remote address is always the load balancer
+  # So check X-Forwarded-For first
+  # E.g. HTTP_X_FORWARDED_FOR: '66.249.72.73, 75.101.144.164'
+  if env.has_key('HTTP_X_FORWARDED_FOR'):
+    ips = re.split(r'\s*,\s*', env['HTTP_X_FORWARDED_FOR'])
+    if len(ips) > 0:
+      return ips[0]
+
+  return env['REMOTE_ADDR']
+
+
+# A class building tzinfo objects for a fixed offset.
+class FixedOffset(tzinfo):
+    """Fixed offset in hours east from UTC. name may be None"""
+    def __init__(self, offset, name):
+        self.offset = timedelta(hours = offset)
+        self.name = name
+        # tzinfo.__init__(self, name)
+
+    def utcoffset(self, dt):
+        return self.offset
+
+    def tzname(self, dt):
+        return self.name
+
+    def dst(self, dt):
+        return timedelta(0)
 

@@ -1,0 +1,11 @@
+<%!
+   from r2.lib.filters import cleanhtml
+ %>
+<%namespace name="wiki" file="invalidate_wikipagecache.html" import="invalidate_link"/>
+
+<div id="wiki">
+  ${unsafe(cleanhtml(thing.html))}
+  %if c.user_is_loggedin:
+    ${wiki.invalidate_link(thing.name,thing.skiplayout)}
+  %endif
+</div>
