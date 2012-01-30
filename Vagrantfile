@@ -18,7 +18,7 @@ Vagrant::Config.run do |config|
 
       :project_name => "reddit",
 
-      :system_packages => ["python-dev","python-setuptools","memcached","libpq-dev"],
+      :system_packages => ["python-dev","python-setuptools","memcached","libpq-dev","python-geoip"],
       :python_global_packages => [],
       :python_packages => [],
 
